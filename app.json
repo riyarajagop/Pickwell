@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Pickwell",
+    "slug": "pickwell",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": { "backgroundColor": "#F5F1E7" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.pickwell.app" },
+    "android": { "package": "com.pickwell.app", "adaptiveIcon": { "backgroundColor": "#28483B" } }
+  }
+}

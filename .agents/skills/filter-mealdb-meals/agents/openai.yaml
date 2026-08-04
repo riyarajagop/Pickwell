@@ -1,0 +1,4 @@
+interface:
+  display_name: "Filter MealDB Meals"
+  short_description: "Keep desserts out of meal recommendations"
+  default_prompt: "Use $filter-mealdb-meals to audit and enforce meal-only TheMealDB recommendations."

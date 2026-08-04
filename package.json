@@ -1,0 +1,33 @@
+{
+  "name": "pickwell-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit && tsc -p worker/tsconfig.json --noEmit",
+    "nutrition:precompute": "node --experimental-strip-types scripts/precompute-nutrition.mjs",
+    "nutrition:enrich": "node --experimental-strip-types scripts/enrich-catalog-nutrition.mjs",
+    "backend:db:local": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 execute pickwell-catalog --local --config worker/wrangler.jsonc --persist-to .wrangler/state --file worker/schema.sql",
+    "backend:dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler dev --config worker/wrangler.jsonc --persist-to .wrangler/state --ip 0.0.0.0",
+    "backend:deploy": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler deploy --config worker/wrangler.jsonc"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~6.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~54.0.30",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-web": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2",
+    "wrangler": "^4.92.0"
+  }
+}

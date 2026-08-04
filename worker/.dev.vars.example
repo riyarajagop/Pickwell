@@ -1,0 +1,15 @@
+# The public development key is appropriate only for local/personal development.
+MEALDB_API_KEY=1
+
+# Set this to true only when MEALDB_API_KEY is a supporter key.
+MEALDB_ENABLE_V2=false
+
+# Server-side USDA FoodData Central key. Get a personal key from data.gov.
+# This is required for USDA search and recipe nutrition; never expose it through
+# an EXPO_PUBLIC_ variable.
+USDA_FDC_API_KEY=
+
+# Optional server-side nutrition fallbacks. Do not put these values in an
+# EXPO_PUBLIC_ variable because Expo embeds those values in the app bundle.
+# NUTRITIONIX_APP_ID=
+# NUTRITIONIX_APP_KEY=

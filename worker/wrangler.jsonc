@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "pickwell-catalog-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-22",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pickwell-catalog",
+      "database_id": "00000000-0000-4000-8000-000000000000"
+    }
+  ],
+  "vars": {
+    "CORS_ORIGIN": "*",
+    "MEALDB_ENABLE_V2": "false"
+  },
+  "triggers": {
+    "crons": [
+      "17 */6 * * *",
+      "37 3 * * *"
+    ]
+  }
+}
