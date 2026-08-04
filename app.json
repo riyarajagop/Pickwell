@@ -3,10 +3,12 @@
     "name": "Pickwell",
     "slug": "pickwell",
     "version": "1.0.0",
+    "icon": "./assets/pickwell-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": { "backgroundColor": "#F5F1E7" },
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.pickwell.app" },
-    "android": { "package": "com.pickwell.app", "adaptiveIcon": { "backgroundColor": "#28483B" } }
+    "android": { "package": "com.pickwell.app", "adaptiveIcon": { "backgroundColor": "#28483B" } },
+    "web": { "favicon": "./assets/pickwell-icon.png" }
   }
 }
