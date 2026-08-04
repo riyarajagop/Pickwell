@@ -26,7 +26,8 @@ import {
 } from "./src/mealDbRecipes";
 import { recipeMatchesRecommendationProfile } from "./src/recommendationCatalog";
 
-type Tab = "Today" | "Taste" | "Log" | "Saved";
+type Tab = "Today" | "Taste" | "Log" | "Saved" | "More";
+type InfoScreen = "about" | "privacy" | "support" | "disclaimer";
 type Mode = "likes" | "dislikes" | "restrictions";
 type Nutrition = { calories: number; protein: number; carbs: number; fat: number };
 type FoodChoice = { fdcId: number; name: string; dataType: string; status: Mode };
@@ -43,6 +44,8 @@ type StoredState = {
 
 const colors = { cream: "#F5F1E7", paper: "#FFFCF5", ink: "#1D2A25", forest: "#28483B", orange: "#D85F32", sage: "#DCE7D8", line: "#D9D5C9", muted: "#68736D", red: "#A94232", brown: "#83564B" };
 const storageKey = "pickwell-mobile-state-v1";
+const privacyUrl = "https://pickwell-six.vercel.app/privacy";
+const supportUrl = "https://pickwell-six.vercel.app/support";
 const dailyReference: Nutrition = { calories: 2000, protein: 50, carbs: 275, fat: 78 };
 const foodGroupLabels = { fruit: "Fruit", vegetables: "Vegetables", grains: "Grains", protein: "Protein", dairy: "Dairy" } as const;
 const defaultPreferences: Preferences = { likes: ["pasta", "cheese"], dislikes: [], restrictions: [], vegetarian: false, vegan: false, halalCompatible: false, kosherCompatible: false, customFoods: [] };
@@ -147,6 +150,8 @@ export default function App() {
   const [refreshingRecommendations, setRefreshingRecommendations] = useState(false);
   const [recipesError, setRecipesError] = useState("");
   const [modalRecipe, setModalRecipe] = useState<Recipe>();
+  const [infoScreen, setInfoScreen] = useState<InfoScreen>();
+  const [recommendationRevision, setRecommendationRevision] = useState(0);
 
   useEffect(() => {
     AsyncStorage.getItem(storageKey).then((value) => {
@@ -224,7 +229,7 @@ export default function App() {
         .finally(() => { if (active) setRecipesLoading(false); });
     }, 500);
     return () => { active = false; clearTimeout(timer); };
-  }, [hydrated, recipePreferenceQuery]);
+  }, [hydrated, recipePreferenceQuery, recommendationRevision]);
 
   const matches = useMemo(() => {
     const restrictions = expandPreferenceKeys(preferences.restrictions);
@@ -357,6 +362,39 @@ export default function App() {
     Alert.alert("Meal logged", `${name} was added to today’s nutrition log.`);
   }
 
+  async function clearLocalData() {
+    const clearedPreferences: Preferences = {
+      ...defaultPreferences,
+      likes: [...defaultPreferences.likes],
+      dislikes: [],
+      restrictions: [],
+      customFoods: [],
+    };
+    const clearedState: StoredState = {
+      preferences: clearedPreferences,
+      saved: [],
+      savedRecipes: {},
+      ratings: {},
+      recentRecipeIds: [],
+      mealLog: [],
+    };
+    await AsyncStorage.setItem(storageKey, JSON.stringify(clearedState));
+    setPreferences(clearedPreferences);
+    setSaved([]);
+    setSavedRecipes({});
+    setRatings({});
+    setRecentRecipeIds([]);
+    setMealLog([]);
+    setRecipeChoices([]);
+    setActiveIndex(0);
+    setRecommendationCursor(0);
+    setNextRecommendationPage(undefined);
+    setHasMoreRecommendations(true);
+    setRecipesError("");
+    setRecommendationRevision((value) => value + 1);
+    Alert.alert("Local data cleared", "Pickwell has been reset to its original preferences.");
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
@@ -366,10 +404,12 @@ export default function App() {
         {tab === "Taste" && <TasteScreen preferences={preferences} mode={mode} setMode={setMode} setPreferences={setPreferences} />}
         {tab === "Log" && <LogScreen mealLog={mealLog} remove={(id) => setMealLog((items) => items.filter((entry) => entry.id !== id))} />}
         {tab === "Saved" && <SavedScreen saved={saved} recipes={savedRecipes} open={(recipe) => { setModalRecipe(recipe); setRecipeOpen(true); }} />}
+        {tab === "More" && <MoreScreen open={setInfoScreen} clearLocalData={clearLocalData} />}
       </View>
-      <View style={styles.tabs}>{(["Today", "Taste", "Log", "Saved"] as Tab[]).map((item) => <Pressable key={item} style={styles.tab} onPress={() => setTab(item)}><Text style={[styles.tabIcon, tab === item && styles.tabActive]}>{item === "Today" ? "⌂" : item === "Taste" ? "♥" : item === "Log" ? "▥" : "♡"}</Text><Text style={[styles.tabLabel, tab === item && styles.tabActive]}>{item}</Text></Pressable>)}</View>
+      <View style={styles.tabs}>{(["Today", "Taste", "Log", "Saved", "More"] as Tab[]).map((item) => <Pressable accessibilityRole="button" accessibilityLabel={`${item} tab`} key={item} style={styles.tab} onPress={() => setTab(item)}><Text style={[styles.tabIcon, tab === item && styles.tabActive]}>{item === "Today" ? "⌂" : item === "Taste" ? "♥" : item === "Log" ? "▥" : item === "Saved" ? "♡" : "•••"}</Text><Text style={[styles.tabLabel, tab === item && styles.tabActive]}>{item}</Text></Pressable>)}</View>
       <RecipeModal recipe={modalRecipe ?? current?.recipe} visible={recipeOpen} close={() => { setRecipeOpen(false); setModalRecipe(undefined); }} />
       <AlternateModal visible={alternateOpen} close={() => setAlternateOpen(false)} log={logMeal} />
+      <InfoModal screen={infoScreen} close={() => setInfoScreen(undefined)} />
     </SafeAreaView>
   );
 }
@@ -528,6 +568,85 @@ function SavedScreen({ saved, recipes, open }: { saved: string[]; recipes: Recor
   return <ScrollView contentContainerStyle={styles.screen}><Text style={styles.eyebrow}>YOUR SHORTLIST</Text><Text style={styles.largeTitle}>Saved for later</Text>{items.length === 0 ? <Text style={styles.body}>Tap Save on a current TheMealDB recipe to begin your shortlist.</Text> : items.map((recipe) => <Pressable key={recipe.id} style={styles.savedCard} onPress={() => open(recipe)}>{recipe.imageUrl ? <Image source={{ uri: recipe.imageUrl }} style={styles.savedImage} /> : <Text style={styles.savedEmoji}>{recipe.emoji}</Text>}<View style={{ flex: 1 }}><Text style={styles.cardTitle}>{recipe.name}</Text><Text style={styles.smallBody}>{recipe.provider} · {recipe.nutritionEstimate?.status === "ready" ? `${recipe.nutrition.calories} estimated calories per serving` : "nutrition pending"}</Text></View><Text>→</Text></Pressable>)}</ScrollView>;
 }
 
+function MoreScreen({ open, clearLocalData }: { open: (screen: InfoScreen) => void; clearLocalData: () => Promise<void> }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+  return <ScrollView contentContainerStyle={styles.screen}>
+    <Text style={styles.eyebrow}>PICKWELL</Text>
+    <Text style={styles.largeTitle}>More</Text>
+    <Text style={styles.body}>Learn how Pickwell handles your information, find help, and manage the data saved on this device.</Text>
+    <View style={styles.infoList}>
+      <InfoRow title="About Pickwell" description="Purpose, version, and recipe data sources" onPress={() => open("about")} />
+      <InfoRow title="Privacy" description="What stays on this device and when network requests occur" onPress={() => open("privacy")} />
+      <InfoRow title="Support" description="Help with recipes, preferences, saving, and meal history" onPress={() => open("support")} />
+      <InfoRow title="Nutrition and safety" description="Important limitations for estimates, allergens, and food safety" onPress={() => open("disclaimer")} />
+    </View>
+    <View style={styles.dataCard}>
+      <Text style={styles.cardTitle}>Your local data</Text>
+      <Text style={styles.body}>Clearing removes taste choices, dietary settings, saved recipes, ratings, recently shown meals, and nutrition history from this device. It cannot be undone.</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Clear all local data" style={styles.dangerButton} onPress={() => setConfirmClear(true)}><Text style={styles.dangerButtonText}>Clear all local data</Text></Pressable>
+    </View>
+    <ClearDataModal visible={confirmClear} cancel={() => setConfirmClear(false)} confirm={async () => { setConfirmClear(false); await clearLocalData(); }} />
+  </ScrollView>;
+}
+
+function InfoRow({ title, description, onPress }: { title: string; description: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} style={styles.infoRow} onPress={onPress}><View style={{ flex: 1 }}><Text style={styles.infoTitle}>{title}</Text><Text style={styles.smallBody}>{description}</Text></View><Text style={styles.infoArrow}>›</Text></Pressable>;
+}
+
+function InfoModal({ screen, close }: { screen?: InfoScreen; close: () => void }) {
+  if (!screen) return null;
+  return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
+    <SafeAreaView style={styles.modal}>
+      <View style={[styles.modalHeader, styles.infoModalHeader]}><Text style={styles.title}>{screen === "about" ? "About Pickwell" : screen === "privacy" ? "Privacy" : screen === "support" ? "Support" : "Nutrition and safety"}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close}><Text style={styles.close}>Done</Text></Pressable></View>
+      <ScrollView contentContainerStyle={styles.modalContent}>
+        {screen === "about" && <>
+          <Text style={styles.eyebrow}>VERSION 1.0.0</Text>
+          <Text style={styles.largeTitle}>Food you can look forward to</Text>
+          <Text style={styles.body}>Pickwell is a local-first meal discovery and nutrition-planning app for picky eaters and anyone who wants less friction around choosing meals.</Text>
+          <Text style={styles.sectionTitle}>How it works</Text>
+          <Text style={styles.body}>Your taste profile filters a bundled recipe catalog on this device. Saved meals, ratings, and nutrition history stay local and do not require an account.</Text>
+          <Text style={styles.sectionTitle}>Data sources</Text>
+          <Text style={styles.body}>Recipe information and images come from TheMealDB. Nutrition estimates are precomputed from reviewed USDA FoodData Central matches, with clearly labeled fallback estimates where needed.</Text>
+        </>}
+        {screen === "privacy" && <>
+          <Text style={styles.eyebrow}>LOCAL FIRST</Text>
+          <Text style={styles.largeTitle}>Private by design</Text>
+          <Text style={styles.body}>Pickwell stores your taste preferences, dietary settings, saved recipes, ratings, recently shown recipe IDs, and meal log on this device using local application storage. Pickwell does not currently provide user accounts, advertising, or cross-app tracking.</Text>
+          <Text style={styles.sectionTitle}>Network requests</Text>
+          <Text style={styles.body}>The app may contact TheMealDB or a configured Pickwell service to load the ingredient library, USDA FoodData Central through the Pickwell service for food searches, and Open Food Facts for a strict nutrition fallback. Recipe images and source links may also load from third-party sites. Those providers may receive normal request information such as an IP address and browser or device details under their own policies.</Text>
+          <Text style={styles.sectionTitle}>Retention and deletion</Text>
+          <Text style={styles.body}>Personal app data remains until you use Clear all local data, clear the app or browser storage, or uninstall Pickwell. Non-personal recipe and nutrition caches may remain until app storage is cleared.</Text>
+          <Pressable accessibilityRole="link" style={styles.sourceButton} onPress={() => Linking.openURL(privacyUrl)}><Text style={styles.sourceButtonText}>Read the full Privacy Policy ↗</Text></Pressable>
+        </>}
+        {screen === "support" && <>
+          <Text style={styles.eyebrow}>HELP</Text>
+          <Text style={styles.largeTitle}>Using Pickwell</Text>
+          <Text style={styles.sectionTitle}>Recipes are missing</Text>
+          <Text style={styles.body}>Review the Taste tab. Pickwell never relaxes dislikes, restrictions, or dietary settings just to fill the recommendation list.</Text>
+          <Text style={styles.sectionTitle}>Saved information disappeared</Text>
+          <Text style={styles.body}>Pickwell saves information only on the current device and browser. Clearing site or app data, using a private browsing session, or uninstalling the app removes it.</Text>
+          <Text style={styles.sectionTitle}>A nutrition estimate looks wrong</Text>
+          <Text style={styles.body}>Check the serving count and the estimate’s ingredient coverage. Nutrition values are planning estimates and should not be used for medical decisions.</Text>
+          <Pressable accessibilityRole="link" style={styles.sourceButton} onPress={() => Linking.openURL(supportUrl)}><Text style={styles.sourceButtonText}>Open Pickwell Support ↗</Text></Pressable>
+        </>}
+        {screen === "disclaimer" && <>
+          <Text style={styles.eyebrow}>IMPORTANT</Text>
+          <Text style={styles.largeTitle}>Plan with context</Text>
+          <Text style={styles.body}>Pickwell provides general meal-planning information. Nutrition values, serving counts, quantity conversions, and daily reference comparisons are estimates—not medical advice, diagnosis, or treatment.</Text>
+          <Text style={styles.sectionTitle}>Allergens and dietary needs</Text>
+          <Text style={styles.body}>Recipe metadata can be incomplete or inaccurate. Always verify ingredient labels, substitutions, cross-contact risk, packaged products, and the original recipe. Halal-compatible and Kosher-compatible labels are screening aids, not certification.</Text>
+          <Text style={styles.sectionTitle}>Cooking and food safety</Text>
+          <Text style={styles.body}>Verify safe internal temperatures, storage, preparation practices, and suitability for your individual needs. Consult a qualified health professional for medical nutrition decisions.</Text>
+        </>}
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>;
+}
+
+function ClearDataModal({ visible, cancel, confirm }: { visible: boolean; cancel: () => void; confirm: () => Promise<void> }) {
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={cancel}><View style={styles.overlay}><View style={styles.dialog}><Text style={styles.cardTitle}>Clear all local data?</Text><Text style={[styles.body, { marginTop: 10 }]}>This removes your taste profile, dietary settings, saves, ratings, recently shown recipes, and nutrition history from this device. This action cannot be undone.</Text><View style={[styles.actionRow, { marginTop: 20 }]}><Pressable accessibilityRole="button" style={styles.button} onPress={cancel}><Text style={styles.buttonText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" style={styles.dangerButtonSolid} onPress={() => void confirm()}><Text style={styles.dangerButtonSolidText}>Clear data</Text></Pressable></View></View></View></Modal>;
+}
+
 function RecipeModal({ recipe, visible, close }: { recipe?: Recipe; visible: boolean; close: () => void }) {
   if (!recipe) return null;
   return <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}><SafeAreaView style={styles.modal}><View style={styles.modalHeader}><Text style={styles.largeTitle}>Recipe</Text><Pressable onPress={close}><Text style={styles.close}>Done</Text></Pressable></View><ScrollView contentContainerStyle={styles.modalContent}>{recipe.imageUrl ? <Image source={{ uri: recipe.imageUrl }} style={styles.modalRecipeImage} /> : <Text style={styles.foodEmoji}>{recipe.emoji}</Text>}<Text style={styles.meta}>{recipe.provider?.toUpperCase()} · {recipe.minutes ? `${recipe.minutes} MINUTES` : "TIME VARIES"}</Text><Text style={styles.largeTitle}>{recipe.name}</Text><Text style={styles.sectionTitle}>Ingredients</Text>{recipe.ingredients.map((item, index) => <Text key={`${item}-${index}`} style={styles.listItem}>— {item}</Text>)}<Text style={styles.sectionTitle}>Directions</Text>{recipe.steps.map((step, index) => <View key={`${step}-${index}`} style={styles.stepRow}><Text style={styles.stepNumber}>{index + 1}</Text><Text style={[styles.body, { flex: 1 }]}>{step}</Text></View>)}{recipe.sourceUrl && <Pressable onPress={() => Linking.openURL(recipe.sourceUrl!)} style={styles.sourceButton}><Text style={styles.sourceButtonText}>Open original recipe source ↗</Text></Pressable>}<Text style={styles.disclaimer}>Recipe data: TheMealDB. Nutrition is read from Pickwell’s precomputed local catalog, generated from reviewed USDA FoodData Central matches and explicitly labeled model-reviewed estimates when no defensible USDA match was available. Serving counts target 500–1,000 calories per serving. Typical item weights, volume conversions, and frying-oil absorption remain assumptions. Verify allergens, dietary requirements, cooking temperatures, and food safety independently.</Text></ScrollView></SafeAreaView></Modal>;
@@ -556,5 +675,6 @@ const styles = StyleSheet.create({
   catalogSection: { backgroundColor: colors.paper, borderTopWidth: 3, borderTopColor: colors.forest, padding: 16, marginVertical: 8 }, catalogSearchRow: { flexDirection: "row", alignItems: "center", gap: 7 }, catalogSearchInput: { flex: 1 }, clearSearch: { height: 44, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" }, clearSearchText: { color: colors.forest, fontSize: 10, fontWeight: "800" }, libraryMeta: { color: colors.muted, fontSize: 10, marginBottom: 5 }, rangeText: { color: colors.ink, fontSize: 11, fontWeight: "800", marginBottom: 12 }, catalogIngredient: { width: "48%", minHeight: 52, borderWidth: 1, borderColor: colors.line, flexDirection: "row", alignItems: "center", padding: 9, gap: 5 }, catalogIngredientName: { flex: 1, color: colors.ink, fontSize: 11, fontWeight: "700" }, pagination: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, gap: 7 }, pageButton: { minHeight: 40, flex: 1, borderWidth: 1, borderColor: colors.forest, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }, pageButtonDisabled: { borderColor: colors.line, backgroundColor: "#F2F0E9" }, pageButtonText: { color: colors.forest, fontSize: 10, fontWeight: "800" }, pageButtonTextDisabled: { color: "#A3A7A4" }, pageLabel: { color: colors.muted, fontSize: 10, fontWeight: "700", textAlign: "center" },
   calendar: { backgroundColor: colors.paper, padding: 15, marginTop: 18 }, calendarHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, calendarTitle: { color: colors.ink, fontFamily: "Georgia", fontSize: 21 }, monthArrow: { color: colors.orange, fontSize: 34, paddingHorizontal: 12 }, weekdays: { flexDirection: "row", marginBottom: 6 }, calendarGrid: { flexDirection: "row", flexWrap: "wrap" }, dayCell: { width: "14.2857%", height: 43, alignItems: "center", justifyContent: "center", borderRadius: 22 }, weekdaysText: { width: "14.2857%", textAlign: "center", color: colors.muted, fontSize: 10, fontWeight: "800" }, daySelected: { backgroundColor: colors.orange }, dayText: { color: colors.ink, fontSize: 12 }, daySelectedText: { color: "white", fontWeight: "900" }, todayText: { color: colors.orange, fontWeight: "900", textDecorationLine: "underline" }, dayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.forest, marginTop: 3 }, todayLink: { color: colors.orange, fontSize: 10, fontWeight: "800", textAlign: "center", marginTop: 12 },
   summary: { backgroundColor: colors.paper, padding: 17, marginTop: 14 }, summaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line, paddingBottom: 12, marginBottom: 12 }, barRow: { marginVertical: 8 }, barLabels: { flexDirection: "row", justifyContent: "space-between", marginBottom: 5 }, barName: { fontSize: 11, textTransform: "capitalize", fontWeight: "800" }, barValue: { fontSize: 10, color: colors.muted }, bar: { height: 7, backgroundColor: "#E2E2DB" }, barFill: { height: 7, backgroundColor: colors.orange }, historyItem: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.paper, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line, padding: 13 }, historyTitle: { fontWeight: "800", fontSize: 12 }, historyNutrition: { color: colors.muted, fontSize: 9, lineHeight: 14, textAlign: "right" }, remove: { color: colors.red, fontSize: 9, textDecorationLine: "underline" }, disclaimer: { color: colors.muted, fontSize: 10, lineHeight: 15, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line, paddingTop: 14, marginTop: 20 }, savedCard: { backgroundColor: colors.paper, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, padding: 15, marginTop: 10, flexDirection: "row", alignItems: "center", gap: 13 }, savedEmoji: { fontSize: 36 }, savedImage: { width: 54, height: 54, borderRadius: 3 },
-  modal: { flex: 1, backgroundColor: colors.cream }, modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, modalContent: { padding: 22, paddingBottom: 50 }, modalRecipeImage: { width: "100%", height: 230, resizeMode: "cover" }, close: { color: colors.orange, fontWeight: "800", fontSize: 14 }, sectionTitle: { color: colors.ink, fontFamily: "Georgia", fontSize: 24, marginTop: 28, marginBottom: 12 }, listItem: { color: colors.muted, fontSize: 13, lineHeight: 22 }, stepRow: { flexDirection: "row", gap: 11, marginBottom: 14 }, stepNumber: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.forest, color: "white", textAlign: "center", paddingTop: 3, fontSize: 11, fontWeight: "800" }, sourceButton: { minHeight: 46, borderWidth: 1, borderColor: colors.forest, alignItems: "center", justifyContent: "center", marginTop: 22 }, sourceButtonText: { color: colors.forest, fontSize: 11, fontWeight: "800" }, overlay: { flex: 1, backgroundColor: "#16251FDD", justifyContent: "center", padding: 18 }, dialog: { backgroundColor: colors.paper, padding: 20, maxHeight: "90%" }, input: { borderWidth: 1, borderColor: colors.line, color: colors.ink, backgroundColor: "white", padding: 12, marginVertical: 16 }, fieldLabel: { fontSize: 10, fontWeight: "900", color: colors.muted, textTransform: "uppercase", letterSpacing: 1, marginTop: 10, marginBottom: 7 }, choice: { borderWidth: 1, borderColor: colors.line, minHeight: 38, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", marginRight: 6 }, choiceActive: { backgroundColor: colors.forest, borderColor: colors.forest }, choiceText: { textAlign: "center" }, choiceActiveText: { color: "white", fontWeight: "800" }, estimate: { flexDirection: "row", backgroundColor: colors.sage, marginVertical: 18 },
+  infoList: { marginTop: 24, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, infoRow: { minHeight: 76, flexDirection: "row", alignItems: "center", backgroundColor: colors.paper, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line, paddingHorizontal: 16, paddingVertical: 13, gap: 12 }, infoTitle: { color: colors.ink, fontSize: 14, fontWeight: "800", marginBottom: 4 }, infoArrow: { color: colors.orange, fontSize: 28 }, dataCard: { backgroundColor: colors.paper, borderTopWidth: 3, borderTopColor: colors.red, padding: 17, marginTop: 24, gap: 8 }, dangerButton: { minHeight: 46, borderWidth: 1, borderColor: colors.red, alignItems: "center", justifyContent: "center", marginTop: 8 }, dangerButtonText: { color: colors.red, fontSize: 11, fontWeight: "800" }, dangerButtonSolid: { flex: 1, minHeight: 44, backgroundColor: colors.red, borderWidth: 1, borderColor: colors.red, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 }, dangerButtonSolidText: { color: "white", fontSize: 11, fontWeight: "800" },
+  modal: { flex: 1, backgroundColor: colors.cream }, modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, infoModalHeader: { minHeight: 64, paddingHorizontal: 22, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, modalContent: { padding: 22, paddingBottom: 50 }, modalRecipeImage: { width: "100%", height: 230, resizeMode: "cover" }, close: { color: colors.orange, fontWeight: "800", fontSize: 14 }, sectionTitle: { color: colors.ink, fontFamily: "Georgia", fontSize: 24, marginTop: 28, marginBottom: 12 }, listItem: { color: colors.muted, fontSize: 13, lineHeight: 22 }, stepRow: { flexDirection: "row", gap: 11, marginBottom: 14 }, stepNumber: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.forest, color: "white", textAlign: "center", paddingTop: 3, fontSize: 11, fontWeight: "800" }, sourceButton: { minHeight: 46, borderWidth: 1, borderColor: colors.forest, alignItems: "center", justifyContent: "center", marginTop: 22 }, sourceButtonText: { color: colors.forest, fontSize: 11, fontWeight: "800" }, overlay: { flex: 1, backgroundColor: "#16251FDD", justifyContent: "center", padding: 18 }, dialog: { backgroundColor: colors.paper, padding: 20, maxHeight: "90%" }, input: { borderWidth: 1, borderColor: colors.line, color: colors.ink, backgroundColor: "white", padding: 12, marginVertical: 16 }, fieldLabel: { fontSize: 10, fontWeight: "900", color: colors.muted, textTransform: "uppercase", letterSpacing: 1, marginTop: 10, marginBottom: 7 }, choice: { borderWidth: 1, borderColor: colors.line, minHeight: 38, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", marginRight: 6 }, choiceActive: { backgroundColor: colors.forest, borderColor: colors.forest }, choiceText: { textAlign: "center" }, choiceActiveText: { color: "white", fontWeight: "800" }, estimate: { flexDirection: "row", backgroundColor: colors.sage, marginVertical: 18 },
 });
